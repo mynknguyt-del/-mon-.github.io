@@ -1,162 +1,104 @@
 import csv
-import re
-from datetime import datetime, timedelta
+import os
+from Lop import Reader
 
-DATA_FILE = "readers.csv"
+class DataReader:
+    def __init__(self, filename="readers.csv"):
+        self.filename = filename
+        self.readers = []
+        self.load_from_file()
 
-class Reader:
-    def __init__(self, reader_id, full_name, class_name, register_date):
-        self.reader_id = reader_id
-        self.full_name = full_name
-        self.class_name = class_name
-        self.register_date = datetime.strptime(register_date, "%d/%m/%Y")
-        self.expiry_date = self.register_date + timedelta(days=365)
+    # ================== ĐỌC / GHI FILE ==================
+    def load_from_file(self):
+        if not os.path.exists(self.filename):
+            return
+        with open(self.filename, mode="r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            self.readers = []
+            for r in reader:
+                books = r.get("borrowed_books", "").split(";") if r.get("borrowed_books") else []
+                self.readers.append(Reader(
+                    r["reader_id"],
+                    r["full_name"],
+                    r["class_name"],
+                    r["register_date"],
+                    books
+                ))
 
-    def list(self):
-        return [
-            self.reader_id,
-            self.full_name,
-            self.class_name,
-            self.register_date.strftime("%d/%m/%Y"),
-            self.expiry_date.strftime("%d/%m/%Y")
+    def save_to_file(self):
+        with open(self.filename, mode="w", encoding="utf-8", newline="") as file:
+            fieldnames = ["reader_id", "full_name", "class_name", "register_date", "borrowed_books"]
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in self.readers:
+                writer.writerow({
+                    "reader_id": r.reader_id,
+                    "full_name": r.full_name,
+                    "class_name": r.class_name,
+                    "register_date": r.register_date,
+                    "borrowed_books": ";".join(r.borrowed_books)
+                })
+
+    # ================== CHỨC NĂNG CHÍNH ==================
+    def add_reader(self):
+        reader = Reader()
+        reader.input_info()
+        if any(r.reader_id == reader.reader_id for r in self.readers):
+            print(" Mã độc giả đã tồn tại.")
+            return
+        self.readers.append(reader)
+        self.save_to_file()
+        print(" Thêm độc giả thành công!")
+
+    def update_reader(self, reader_id):
+        for r in self.readers:
+            if r.reader_id == reader_id:
+                print("Nhập thông tin mới (nhấn Enter để bỏ qua):")
+                new_name = input("Họ tên mới: ").strip()
+                new_class = input("Lớp mới: ").strip()
+                new_date = input("Ngày đăng ký mới (DD/MM/YYYY): ").strip()
+
+                if new_name: r.full_name = new_name
+                if new_class: r.class_name = new_class
+                if new_date: r.register_date = new_date
+
+                self.save_to_file()
+                print(" Cập nhật độc giả thành công!")
+                return
+        print(" Không tìm thấy mã độc giả.")
+
+    def delete_reader(self, reader_id):
+        for r in self.readers:
+            if r.reader_id == reader_id:
+                self.readers.remove(r)
+                self.save_to_file()
+                print(" Xóa độc giả thành công!")
+                return
+        print(" Không tìm thấy mã độc giả cần xóa.")
+
+    def search_reader(self, keyword):
+        result = [
+            r for r in self.readers
+            if keyword.lower() in r.reader_id.lower() or keyword.lower() in r.full_name.lower()
         ]
-
-
-def validate_reader_id(reader_id):
-    return bool(re.match(r"^R\d{2}_\d{5}$", reader_id))
-
-def validate_full_name(full_name):
-    return bool(re.match(r"^[A-ZÀ-Ỹ][a-zà-ỹ]*(?:\s[A-ZÀ-Ỹ][a-zà-ỹ]*)*$", full_name))
-
-def validate_class_name(class_name):
-    return bool(re.match(r"^[A-Z]\d{2}[A-Z]\d*$", class_name))
-
-def validate_date(date_str):
-    try:
-        date = datetime.strptime(date_str, "%d/%m/%Y")
-        return date <= datetime.now()
-    except:
-        return False
-
-
-def load_data():
-    readers = []
-    try:
-        with open(DATA_FILE, mode="r", newline="", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            next(reader)
-            for row in reader:
-                readers.append(Reader(*row[:4]))
-    except FileNotFoundError:
-        pass
-    return readers
-
-def save_data(readers):
-    with open(DATA_FILE, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ReaderID", "FullName", "Class", "RegisterDate", "ExpiryDate"])
-        for r in readers:
-            writer.writerow(r.to_list())
-
-
-def add_reader(readers):
-    reader_id = input("Nhập mã độc giả (VD: R24_00001): ")
-    if not validate_reader_id(reader_id):
-        print("Mã độc giả không hợp lệ!")
-        return
-
-    if any(r.reader_id == reader_id for r in readers):
-        print("Mã độc giả đã tồn tại!")
-        return
-
-    full_name = input("Nhập họ tên: ").strip().title()
-    if not validate_full_name(full_name):
-        print("Họ tên không hợp lệ!")
-        return
-
-    class_name = input("Nhập lớp (VD: K60S): ").strip().upper()
-    if not validate_class_name(class_name):
-        print("Lớp không hợp lệ!")
-        return
-
-    register_date = input("Nhập ngày đăng ký (DD/MM/YYYY): ").strip()
-    if not validate_date(register_date):
-        print("Ngày đăng ký không hợp lệ hoặc lớn hơn hiện tại!")
-        return
-
-    new_reader = Reader(reader_id, full_name, class_name, register_date)
-    readers.append(new_reader)
-    save_data(readers)
-    print("Thêm độc giả thành công!")
-
-
-def edit_reader(readers):
-    reader_id = input("Nhập mã độc giả cần sửa: ")
-    for r in readers:
-        if r.reader_id == reader_id:
-            print(f"Đang chỉnh sửa {r.full_name}")
-            new_name = input("Tên mới (Enter để bỏ qua): ").strip()
-            if new_name:
-                if validate_full_name(new_name):
-                    r.full_name = new_name.title()
-            new_class = input("Lớp mới (Enter để bỏ qua): ").strip()
-            if new_class:
-                if validate_class_name(new_class):
-                    r.class_name = new_class.upper()
-            save_data(readers)
-            print("Đã cập nhật thông tin độc giả.")
-            return
-    print("Không tìm thấy mã độc giả.")
-
-
-def delete_reader(readers):
-    reader_id = input("Nhập mã độc giả cần xóa: ")
-    for r in readers:
-        if r.reader_id == reader_id:
-            readers.remove(r)
-            save_data(readers)
-            print("Đã xóa độc giả.")
-            return
-    print("Không tìm thấy mã độc giả.")
-
-
-def search_reader(readers):
-    keyword = input("Nhập mã hoặc họ tên cần tìm: ").strip().lower()
-    found = [r for r in readers if keyword in r.reader_id.lower() or keyword in r.full_name.lower()]
-    if found:
-        print(f"{'Mã':<12}{'Họ tên':<25}{'Lớp':<10}{'Đăng ký':<12}{'Hết hạn':<12}")
-        for r in found:
-            print(f"{r.reader_id:<12}{r.full_name:<25}{r.class_name:<10}"
-                  f"{r.register_date.strftime('%d/%m/%Y'):<12}{r.expiry_date.strftime('%d/%m/%Y'):<12}")
-    else:
-        print("Không tìm thấy độc giả nào.")
-
-
-
-def main():
-    readers = load_data()
-    while True:
-        print("\n=== QUẢN LÝ ĐỘC GIẢ ===")
-        print("1. Thêm độc giả mới")
-        print("2. Chỉnh sửa thông tin")
-        print("3. Xóa độc giả")
-        print("4. Tra cứu độc giả")
-        print("5. Thoát")
-        choice = input("Chọn chức năng: ")
-
-        if choice == "1":
-            add_reader(readers)
-        elif choice == "2":
-            edit_reader(readers)
-        elif choice == "3":
-            delete_reader(readers)
-        elif choice == "4":
-            search_reader(readers)
-        elif choice == "5":
-            print("Thoát chương trình.")
-            break
+        if result:
+            print("\n KẾT QUẢ TÌM KIẾM:")
+            for r in result:
+                r.display_info()
         else:
-            print("Lựa chọn không hợp lệ!")
+            print("Không tìm thấy độc giả nào phù hợp.")
 
-if __name__ == "__main__":
-    main()
+    def display_all(self):
+    """Hiển thị toàn bộ danh sách độc giả"""
+    if not self.readers:
+        print("Danh sách trống.")
+        return
+
+    print("\n===== DANH SÁCH ĐỘC GIẢ =====")
+    print(f"{'MÃ ĐỘC GIẢ':<12} | {'HỌ TÊN':<25} | {'LỚP':<8} | {'NGÀY ĐK':<12} | {'SÁCH ĐANG MƯỢN'}")
+    print("-" * 80)
+
+    for r in self.readers:
+        borrowed_books = ", ".join(r.borrowed_books) if getattr(r, "borrowed_books", []) else "Không có"
+        print(f"{r.reader_id:<12} | {r.full_name:<25} | {r.class_name:<8} | {r.register_date:<12} | {borrowed_books}")
+
